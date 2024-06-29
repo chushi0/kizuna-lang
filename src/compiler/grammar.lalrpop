@@ -1,0 +1,166 @@
+use std::str::FromStr;
+use crate::compiler::ast;
+
+grammar;
+
+pub File: Vec<ast::File> = {
+    <mut f:File> <r:FileRow> => {
+        f.push(r);
+        f
+    },
+    () => vec![]
+}
+
+FileRow: ast::File = {
+    Stat => ast::File::Stat(<>),
+    FuncDef => ast::File::FuncDef(<>),
+}
+
+FuncDef: ast::FuncDef = {
+    Kizuna <n:Id> "(" <p:FuncParams> ")" "{" <b:Stats> "}" => ast::FuncDef { name: n, params: p, body: b },
+}
+
+FuncParams: Vec<ast::Identify> = {
+    FuncParamsAl1 => <>,
+    () => vec![]
+}
+
+FuncParamsAl1: Vec<ast::Identify> = {
+    Id => vec![<>],
+    <mut p:FuncParamsAl1> "," <t:Id> => {
+        p.push(t);
+        p
+    }
+}
+
+FuncCall: ast::FuncCall = {
+    <n:Id> "(" <p:FuncParamsVal> ")" => ast::FuncCall { name: n, params: p },
+}
+
+FuncParamsVal: Vec<Box<ast::Expr>> = {
+    FuncParamsValAl1 => <>,
+    () => vec![]
+}
+
+FuncParamsValAl1: Vec<Box<ast::Expr>> = {
+    Expr => vec![<>],
+    <mut p:FuncParamsValAl1> "," <t:Expr> => {
+        p.push(t);
+        p
+    }
+}
+
+Stats: ast::Stats = {
+    <mut a:Stats> <b:Stat> => {
+        a.push(b);
+        a
+    },
+    () => vec![]
+}
+
+Stat: ast::Stat = {
+    <e:Expr> ";" => ast::Stat::Expr(e),
+    VarDef => ast::Stat::VarDef(<>),
+    VarMod => ast::Stat::VarMod(<>),
+    IfBlock => ast::Stat::IfBlock(<>),
+    LoopBlock => ast::Stat::LoopBlock(<>),
+    BreakStat => ast::Stat::BreakStat,
+}
+
+VarDef: ast::VariableDefine = {
+    Kizuna <n:Id> "=" <c:Expr> ";" => ast::VariableDefine { name: n, value: c },
+}
+
+VarMod: ast::VariableModify = {
+    <n:Id> <a:OpAssign> <c:Expr> ";" => ast::VariableModify { name: n, op: a, value: c },
+}
+
+IfBlock: ast::IfBlock = {
+    Kizuna "(" <c:Expr> ")" "{" <t:Stats> "}" => ast::IfBlock { cond: c, then: t, otherwise: vec![] },
+    Kizuna "(" <c:Expr> ")" "{" <t:Stats> "}" "{" <o:Stats> "}" => ast::IfBlock { cond: c, then: t, otherwise: o }
+}
+
+LoopBlock: ast::LoopBlock = {
+    Kizuna "{" <s:Stats> "}" => ast::LoopBlock(s)
+}
+
+BreakStat: () = {
+    Kizuna ";" => ()
+}
+
+Expr: Box<ast::Expr> = {
+    #[precedence(level="0")]
+    Value => Box::new(ast::Expr::Value(<>)),
+    #[precedence(level="1")]
+    FuncCall => Box::new(ast::Expr::FuncCall(<>)),
+    #[precedence(level="2")]
+    OpOne Expr => Box::new(ast::Expr::Expr1(<>)),
+    #[precedence(level="3")] #[assoc(side="left")]
+    Expr OpMD Expr => Box::new(ast::Expr::Expr2(<>)),
+    #[precedence(level="4")] #[assoc(side="left")]
+    Expr OpAS Expr => Box::new(ast::Expr::Expr2(<>)),
+    #[precedence(level="5")] #[assoc(side="left")]
+    Expr OpCmp Expr => Box::new(ast::Expr::Expr2(<>)),
+    #[precedence(level="6")] #[assoc(side="left")]
+    Expr OpLogic Expr => Box::new(ast::Expr::Expr2(<>)),
+}
+
+Value: ast::Value = {
+    Id => ast::Value::Identify(<>),
+    String => ast::Value::String(<>),
+    Number => ast::Value::Number(<>),
+}
+
+Kizuna: () = {
+    "kizuna" => (),
+    "kzn" => ()
+}
+
+Id: ast::Identify = {
+    r"[a-zA-Z_][a-zA-Z0-9_]*" => ast::Identify(String::from_str(<>).unwrap())
+}
+
+String: String = {
+    r#""([^"]|\\")*""# => {
+        let s = <>;
+        String::from_str(&s[1..s.len()-1]).unwrap()
+    }
+}
+
+Number: f64 = {
+    r"(0|[1-9][0-9]*)(\.[0-9]*[1-9])?([eE][1-9][0-9]*)?" => <>.parse().unwrap()
+}
+
+OpMD: ast::OpCode = {
+    "*" => ast::OpCode::Mul,
+    "/" => ast::OpCode::Div,
+}
+
+OpAS: ast::OpCode = {
+    "+" => ast::OpCode::Add,
+    "-" => ast::OpCode::Sub,
+}
+
+OpAssign: ast::OpCode = {
+    "=" => ast::OpCode::Eq,
+}
+
+OpOne: ast::OpCode = {
+    "+" => ast::OpCode::Add,
+    "-" => ast::OpCode::Sub,
+    "!" => ast::OpCode::Not,
+}
+
+OpCmp: ast::OpCode = {
+    "==" => ast::OpCode::EqEq,
+    "!=" => ast::OpCode::NotEq,
+    ">" => ast::OpCode::Gt,
+    ">=" => ast::OpCode::Ge,
+    "<" => ast::OpCode::Lt,
+    "<=" => ast::OpCode::Le,
+}
+
+OpLogic: ast::OpCode = {
+    "||" => ast::OpCode::OrOr,
+    "&&" => ast::OpCode::AndAnd,
+}
